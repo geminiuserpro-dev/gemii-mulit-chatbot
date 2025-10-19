@@ -4,6 +4,7 @@ import base64
 from PIL import Image
 from io import BytesIO
 import time
+import pandas as pd
 
 BACKEND_URL = "http://localhost:5000"
 
@@ -28,6 +29,16 @@ if 'session_id' not in st.session_state:
             st.stop() # Stop the app if we can't get a session
 
 st.title("Gemini App: Chat, Images, Videos")
+
+# Display model information
+with st.expander("View Model Information"):
+    model_info_response = make_request("get", f"{BACKEND_URL}/model_info")
+    if model_info_response:
+        df = pd.DataFrame(model_info_response.json())
+        st.dataframe(df)
+    else:
+        st.warning("Could not fetch model information from the backend.")
+
 
 # Fetch categorized models
 with st.spinner('Fetching available models...'):

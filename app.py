@@ -87,6 +87,22 @@ def list_models():
         'video_models': sorted(list(set(video_models)))
     })
 
+@app.route('/model_info', methods=['GET'])
+def model_info():
+    model_data = [
+        {"Model Family": "Gemini 2.5 Pro", "Example Variants": "gemini-2.5-pro, gemini-2.5-pro-preview", "Capabilities": "Chat, function calling, code execution, grounding", "Input Modalities": "Text, images, video, audio, PDF", "Output Modalities": "Text", "Token Limits (Input/Output)": "1,048,576 / 65,536", "Notes": "Advanced reasoning; knowledge cutoff Jan 2025."},
+        {"Model Family": "Gemini 2.5 Flash", "Example Variants": "gemini-2.5-flash, gemini-2.5-flash-preview-09-2025", "Capabilities": "Chat, function calling, structured outputs", "Input Modalities": "Text, images, video, audio", "Output Modalities": "Text", "Token Limits (Input/Output)": "1,048,576 / 65,536", "Notes": "Faster variant; supports search grounding."},
+        {"Model Family": "Gemini 2.5 Flash Image", "Example Variants": "gemini-2.5-flash-image, gemini-2.5-flash-image-preview", "Capabilities": "Image generation, chat", "Input Modalities": "Images, text", "Output Modalities": "Images, text", "Token Limits (Input/Output)": "32,768 / 32,768", "Notes": "Uses Imagen under the hood for text-to-image."},
+        {"Model Family": "Gemini 2.5 Flash Live", "Example Variants": "gemini-2.5-flash-native-audio-preview-09-2025", "Capabilities": "Live chat, audio generation", "Input Modalities": "Audio, video, text", "Output Modalities": "Audio, text", "Token Limits (Input/Output)": "128,000 / 8,000", "Notes": "For real-time interactions."},
+        {"Model Family": "Gemini 2.0 Flash", "Example Variants": "gemini-2.0-flash, gemini-2.0-flash-exp", "Capabilities": "Chat, function calling", "Input Modalities": "Audio, images, video, text", "Output Modalities": "Text", "Token Limits (Input/Output)": "1,048,576 / 8,192", "Notes": "Experimental thinking support."},
+        {"Model Family": "Imagen 4", "Example Variants": "imagen-4.0-generate-001, imagen-4.0-ultra-generate-001", "Capabilities": "High-fidelity image generation", "Input Modalities": "Text", "Output Modalities": "Images (1-4)", "Token Limits (Input/Output)": "480 / N/A", "Notes": "Supports aspect ratios, person generation controls, labels; English prompts only."},
+        {"Model Family": "Imagen 3", "Example Variants": "imagen-3.0-generate-002", "Capabilities": "Image generation", "Input Modalities": "Text", "Output Modalities": "Images (up to 4)", "Token Limits (Input/Output)": "N/A / N/A", "Notes": "Basic text-to-image; includes SynthID watermark."},
+        {"Model Family": "Veo 3.1", "Example Variants": "veo-3.1-generate-preview, veo-3.1-fast-generate-preview", "Capabilities": "Video generation with audio", "Input Modalities": "Text, images, videos", "Output Modalities": "Video (MP4, 4-8s)", "Token Limits (Input/Output)": "1,024 / 1 video", "Notes": "Supports extensions, reference images, advanced controls; asynchronous."},
+        {"Model Family": "Veo 3", "Example Variants": "veo-3.0-generate-001, veo-3.0-fast-generate-001", "Capabilities": "Video generation with audio", "Input Modalities": "Text, images", "Output Modalities": "Video (MP4)", "Token Limits (Input/Output)": "1,024 / 1 video", "Notes": "720p/1080p; includes SynthID."},
+        {"Model Family": "Veo 2", "Example Variants": "veo-2.0-generate-001", "Capabilities": "Silent video generation", "Input Modalities": "Text, images", "Output Modalities": "Video (silent)", "Token Limits (Input/Output)": "N/A / up to 2 videos", "Notes": "Older variant; up to 20MB input images."}
+    ]
+    return jsonify(model_data)
+
 from flask import Response
 
 # ... (keep existing imports)
