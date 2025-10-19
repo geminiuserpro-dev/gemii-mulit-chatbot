@@ -15,7 +15,16 @@ def make_request(method, url, **kwargs):
         response.raise_for_status()  # Raise an exception for bad status codes
         return response
     except requests.exceptions.RequestException as e:
-        st.error(f"An error occurred: {e}")
+        try:
+            # Try to parse the JSON error response from the backend
+            error_data = e.response.json()
+            error_name = error_data.get('error', {}).get('name', 'Unknown Error')
+            error_message = error_data.get('error', {}).get('message', 'No additional information.')
+            st.error(f"A backend error occurred: {error_name}")
+            st.error(f"Details: {error_message}")
+        except (ValueError, AttributeError):
+            # Fallback for non-JSON responses or other request errors
+            st.error(f"An error occurred: {e}")
         return None
 
 # Initialize session
