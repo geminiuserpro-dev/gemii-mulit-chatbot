@@ -1,0 +1,6 @@
+google-genai
+flask
+flask-session
+streamlit
+requests
+pillow
