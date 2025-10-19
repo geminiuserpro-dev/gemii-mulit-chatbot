@@ -4,3 +4,5 @@ flask-session
 streamlit
 requests
 pillow
+celery
+redis

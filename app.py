@@ -9,11 +9,33 @@ import os
 from PIL import Image
 from io import BytesIO
 import base64
+from celery import Celery
 
 app = Flask(__name__)
 app.config['SESSION_TYPE'] = 'filesystem'
+app.config.update(
+    CELERY_BROKER_URL='redis://localhost:6379/0',
+    CELERY_RESULT_BACKEND='redis://localhost:6379/0'
+)
 Session(app)
 
+def make_celery(app):
+    celery = Celery(
+        app.import_name,
+        backend=app.config['CELERY_RESULT_BACKEND'],
+        broker=app.config['CELERY_BROKER_URL']
+    )
+    celery.conf.update(app.config)
+
+    class ContextTask(celery.Task):
+        def __call__(self, *args, **kwargs):
+            with app.app_context():
+                return self.run(*args, **kwargs)
+
+    celery.Task = ContextTask
+    return celery
+
+celery = make_celery(app)
 client = genai.Client()  # API key from env GEMINI_API_KEY
 
 # SQLite setup
@@ -26,6 +48,21 @@ def init_db():
 
 init_db()
 
+@celery.task
+def generate_video_task(prompt, model):
+    """Celery task to generate video asynchronously."""
+    operation = client.models.generate_videos(model=model, prompt=prompt)
+
+    while not operation.done:
+        time.sleep(10)
+        operation = client.operations.get(operation)
+
+    generated_video = operation.response.generated_videos[0]
+    video_filename = f"{uuid.uuid4()}.mp4"
+    client.files.download(file=generated_video.video)
+    generated_video.video.save(video_filename)
+    return video_filename
+
 @app.route('/start_session', methods=['POST'])
 def start_session():
     session['id'] = str(uuid.uuid4())
@@ -33,8 +70,26 @@ def start_session():
 
 @app.route('/list_models', methods=['GET'])
 def list_models():
-    models = [m.name for m in client.models.list_models()]
-    return jsonify(models)
+    chat_models = []
+    image_models = []
+    video_models = []
+    for m in client.models.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            chat_models.append(m.name)
+        if 'generateImages' in m.supported_generation_methods or 'imagen' in m.name:
+            image_models.append(m.name)
+        if 'generateVideos' in m.supported_generation_methods or 'veo' in m.name:
+            video_models.append(m.name)
+
+    return jsonify({
+        'chat_models': sorted(list(set(chat_models))),
+        'image_models': sorted(list(set(image_models))),
+        'video_models': sorted(list(set(video_models)))
+    })
+
+from flask import Response
+
+# ... (keep existing imports)
 
 @app.route('/chat', methods=['POST'])
 def chat():
@@ -50,18 +105,25 @@ def chat():
     history = [{'role': row[0], 'parts': [{'text': row[1]}]} for row in c.fetchall()]
 
     # Create chat with history
-    chat = client.chats.create(model=model_name, history=history)
+    chat_session = client.chats.create(model=model_name, history=history)
 
-    # Send message
-    response = chat.send_message(message=user_message)
+    # Get streaming response
+    response_stream = chat_session.send_message(message=user_message, stream=True)
 
-    # Save messages
-    c.execute('INSERT INTO chats VALUES (?, ?, ?)', (session_id, user_message, 'user'))
-    c.execute('INSERT INTO chats VALUES (?, ?, ?)', (session_id, response.text, 'model'))
-    conn.commit()
-    conn.close()
+    def generate():
+        # Accumulate the full response to save to DB
+        full_response_text = ""
+        for chunk in response_stream:
+            full_response_text += chunk.text
+            yield chunk.text
 
-    return jsonify({'response': response.text})
+        # Save messages after streaming is complete
+        c.execute('INSERT INTO chats VALUES (?, ?, ?)', (session_id, user_message, 'user'))
+        c.execute('INSERT INTO chats VALUES (?, ?, ?)', (session_id, full_response_text, 'model'))
+        conn.commit()
+        conn.close()
+
+    return Response(generate(), mimetype='text/plain')
 
 @app.route('/generate_image', methods=['POST'])
 def generate_image():
@@ -69,7 +131,7 @@ def generate_image():
     prompt = data['prompt']
     model = data.get('model', 'imagen-4.0-generate-001')
     num_images = data.get('num_images', 1)
-    aspect_ratio = data.get('aspect_ratio', '1:1')  # Example optional param
+    aspect_ratio = data.get('aspect_ratio', '1:1')
 
     response = client.models.generate_images(
         model=model,
@@ -94,17 +156,30 @@ def generate_video():
     prompt = data['prompt']
     model = data.get('model', 'veo-3.1-generate-preview')
 
-    operation = client.models.generate_videos(model=model, prompt=prompt)
+    task = generate_video_task.delay(prompt, model)
 
-    while not operation.done:
-        time.sleep(10)
-        operation = client.operations.get(operation)
+    return jsonify({'task_id': task.id})
 
-    generated_video = operation.response.generated_videos[0]
-    client.files.download(file=generated_video.video)
-    generated_video.video.save("generated_video.mp4")
-
-    return jsonify({'video_path': 'generated_video.mp4'})  # In prod, use cloud storage URL
+@app.route('/video_status/<task_id>', methods=['GET'])
+def video_status(task_id):
+    task = generate_video_task.AsyncResult(task_id)
+    if task.state == 'PENDING':
+        response = {
+            'state': task.state,
+            'status': 'Pending...'
+        }
+    elif task.state != 'FAILURE':
+        response = {
+            'state': task.state,
+            'status': 'Task complete!',
+            'result': task.info,
+        }
+    else:
+        response = {
+            'state': task.state,
+            'status': str(task.info),
+        }
+    return jsonify(response)
 
 if __name__ == '__main__':
     app.run(debug=True)
